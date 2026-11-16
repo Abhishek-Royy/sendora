@@ -2,6 +2,10 @@ import { useState, useRef } from "react";
 import { useWebRTC } from "../hooks/useWebRTC";
 import TransferProgress from "./TransferProgress";
 
+// Safety threshold: browser in-memory Blob limit is ~1.5 - 2 GB
+const MAX_FILE_SIZE = 1.5 * 1024 * 1024 * 1024; // 1.5 GB
+const WARN_FILE_SIZE = 500 * 1024 * 1024; // 500 MB (warning for slower/relayed connections)
+
 export default function CreateRoom({ onBack }) {
   const {
     roomCode,
@@ -14,6 +18,7 @@ export default function CreateRoom({ onBack }) {
   } = useWebRTC();
 
   const [selectedFile, setSelectedFile] = useState(null);
+  const [fileError, setFileError] = useState("");
   const [roomCreated, setRoomCreated] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -24,11 +29,30 @@ export default function CreateRoom({ onBack }) {
 
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
-    if (file) setSelectedFile(file);
+    setFileError("");
+    if (!file) return;
+
+    if (file.size === 0) {
+      setFileError("Selected file is empty (0 Bytes). Please pick a valid file.");
+      setSelectedFile(null);
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      setFileError(
+        `File is too large (${formatSize(file.size)}). Current in-browser limit is 1.5 GB to prevent tab crashes.`
+      );
+      setSelectedFile(null);
+      return;
+    }
+
+    setSelectedFile(file);
   };
 
   const handleSend = () => {
-    if (selectedFile) sendFile(selectedFile);
+    if (selectedFile && !fileError) {
+      sendFile(selectedFile);
+    }
   };
 
   const formatSize = (bytes) => {
@@ -73,7 +97,10 @@ export default function CreateRoom({ onBack }) {
             transferStatus !== "transferring" &&
             transferStatus !== "complete" && (
               <div className="step">
-                <h2>Step 2: Select a File</h2>
+                <div className="step-header-row">
+                  <h2>Step 2: Select a File</h2>
+                  <span className="size-badge">Max 1.5 GB</span>
+                </div>
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -87,7 +114,25 @@ export default function CreateRoom({ onBack }) {
                   📁 Choose File
                 </button>
 
-                {selectedFile && (
+                {/* Validation error message */}
+                {fileError && (
+                  <div className="validation-box error-box">
+                    <span>⚠️</span>
+                    <p>{fileError}</p>
+                  </div>
+                )}
+
+                {/* Warning for large files */}
+                {selectedFile && selectedFile.size > WARN_FILE_SIZE && (
+                  <div className="validation-box warning-box">
+                    <span>💡</span>
+                    <p>
+                      Large file ({formatSize(selectedFile.size)}): Best transferred on the same Wi-Fi. Ensure both browser tabs stay awake during transfer.
+                    </p>
+                  </div>
+                )}
+
+                {selectedFile && !fileError && (
                   <div className="file-info">
                     <div className="file-info-details">
                       <span className="file-icon">📄</span>
