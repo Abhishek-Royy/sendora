@@ -46,6 +46,7 @@ export function useWebRTC() {
   const [transferStatus, setTransferStatus] = useState("idle");
   // idle | waiting | connecting | transferring | complete | error
   const [receivedFile, setReceivedFile] = useState(null);
+  const [receivedText, setReceivedText] = useState(null);
   const [fileMeta, setFileMeta] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -238,6 +239,18 @@ export function useWebRTC() {
                   name: fileMetaRef.current?.name || "download",
                   size: blob.size,
                 });
+
+                if (fileMetaRef.current?.isText) {
+                  blob
+                    .text()
+                    .then((text) => {
+                      setReceivedText(text);
+                    })
+                    .catch((err) => {
+                      console.error("Failed to decode text:", err);
+                    });
+                }
+
                 setTransferStatus("complete");
                 setTransferProgress(100);
 
@@ -282,7 +295,7 @@ export function useWebRTC() {
   );
 
   // ── SENDER: Send File ─────────────────────────────────────────
-  const sendFile = useCallback((file) => {
+  const sendFile = useCallback((file, isText = false) => {
     const dc = dcRef.current;
     if (!dc || dc.readyState !== "open") {
       console.error("DataChannel not open");
@@ -296,6 +309,7 @@ export function useWebRTC() {
       name: file.name,
       size: file.size,
       type: file.type,
+      isText: Boolean(isText),
     });
 
     setTransferStatus("transferring");
@@ -358,6 +372,19 @@ export function useWebRTC() {
     readSlice(); // Start reading
   }, []);
 
+  // ── SENDER: Send Text / Code ──────────────────────────────────
+  const sendText = useCallback(
+    (text, filename = "snippet.txt") => {
+      const cleanName = filename.trim() || "snippet.txt";
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const file = new File([blob], cleanName, {
+        type: "text/plain;charset=utf-8",
+      });
+      sendFile(file, true);
+    },
+    [sendFile]
+  );
+
   return {
     roomCode,
     connected,
@@ -365,11 +392,13 @@ export function useWebRTC() {
     transferProgress,
     transferStatus,
     receivedFile,
+    receivedText,
     fileMeta,
     errorMsg,
     createRoom,
     joinRoom,
     sendFile,
+    sendText,
   };
 }
 
